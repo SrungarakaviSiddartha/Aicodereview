@@ -44,19 +44,20 @@ interface OpenAIResponse {
 /**
  * Maximum iterations for tool use loop
  */
-const MAX_ITERATIONS = 50; // Increased for thorough reviews
+const MAX_ITERATIONS = 10; // Reduced for Groq free tier
 
 /**
  * Maximum tokens for response
  */
-const MAX_TOKENS = 2000;
+const MAX_TOKENS = 1000; // Reduced for Groq free tier (12000 TPM limit)
 
 /**
  * Retry configuration for OpenAI API calls
  */
-const MAX_RETRIES = 5;
+const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 2000; // 2 seconds
-const MAX_RETRY_DELAY = 70000; // 70 seconds (covers per-minute rate limit reset)
+const SHORT_RETRY_DELAY = 10000; // 10 seconds for 429 rate limits
+const MAX_RETRY_DELAY = 30000; // 30 seconds max for exponential backoff
 const REQUEST_TIMEOUT = 60000; // 60 seconds
 
 /**
@@ -101,10 +102,22 @@ export async function performAIReview(
     { role: 'user', content: userPrompt },
   ];
 
+  // For Groq: skip tool loop and return direct review
+  const isGroq = aiConfig.baseUrl.includes('generativelanguage.googleapis.com') || aiConfig.model.includes('llama');
+  if (isGroq) {
+    info('Using Groq: direct review mode (no tool calling)');
+    const response = await callOpenAI(messages, aiConfig);
+    if (!response || response.trim().length === 0) {
+      throw new Error('AI returned empty response');
+    }
+    info('✅ Final review generated');
+    return cleanupResponse(response);
+  }
+
   let iteration = 0;
   let totalToolCalls = 0;
 
-  // Tool use loop
+  // Tool use loop (OpenAI only)
   while (iteration < MAX_ITERATIONS) {
     iteration++;
     info(`📊 AI Iteration ${iteration}/${MAX_ITERATIONS}`);
@@ -216,21 +229,6 @@ function isRetryableError(error: any): boolean {
 }
 
 /**
- * Extract retry delay (in ms) from a 429 API error message
- */
-function extractRetryDelay(error: any): number {
-  try {
-    const match = error.message?.match(/retryDelay["\s:]+([\d.]+)s/);
-    if (match) return Math.ceil(parseFloat(match[1])) * 1000 + 2000;
-    const secMatch = error.message?.match(/retry in ([\d.]+)s/);
-    if (secMatch) return Math.ceil(parseFloat(secMatch[1])) * 1000 + 2000;
-  } catch (e) {
-    // Ignore parsing errors
-  }
-  return MAX_RETRY_DELAY;
-}
-
-/**
  * Call OpenAI API with retry logic and timeout
  */
 async function callOpenAI(
@@ -241,8 +239,10 @@ async function callOpenAI(
     ? config.baseUrl
     : `${config.baseUrl}/chat/completions`;
 
-  // Convert tools to OpenAI tools format
-  const tools = AI_TOOLS.map(tool => ({
+  // Disable tools for Groq to avoid format incompatibility
+  // Groq free tier works better with direct review without tool calling
+  const isGroq = (config.baseUrl || '').includes('generativelanguage.googleapis.com') || (config.model || '').includes('llama');
+  const tools = isGroq ? [] : AI_TOOLS.map(tool => ({
     type: 'function',
     function: {
       name: tool.name,
@@ -273,8 +273,7 @@ async function callOpenAI(
             temperature: 0.3, // Lower temperature for more focused, consistent reviews
             max_tokens: MAX_TOKENS,
             top_p: 0.95,
-            tools,
-            tool_choice: 'auto', // Let model decide when to use tools
+            ...(tools.length > 0 && { tools, tool_choice: 'auto' }), // Only include tools if not Groq
           }),
           signal: abortController.signal,
         });
@@ -336,17 +335,16 @@ async function callOpenAI(
 
       // Check if this is a retryable error
       if (isRetryableError(error) && attempt < MAX_RETRIES) {
-        // For 429, use the delay from the API response; otherwise exponential backoff
         const is429 = error.message?.includes('429');
         const delay = is429
-          ? extractRetryDelay(error)
+          ? SHORT_RETRY_DELAY  // Short delay for Groq rate limits
           : Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), MAX_RETRY_DELAY);
 
         if (is429) {
-          warning(`⏳ Rate limited (429) – waiting ${delay / 1000}s for quota reset...`);
+          warning(`⏳ Rate limited (429) – retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
         } else {
           warning(`Network error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${error.message}`);
-          warning(`Retrying in ${delay / 1000} seconds...`);
+          warning(`Retrying in ${delay / 1000}s...`);
         }
 
         await sleep(delay);
