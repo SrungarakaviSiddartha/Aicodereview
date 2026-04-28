@@ -1,0 +1,34 @@
+{
+  "action": "opened",
+  "number": 25,
+  "pull_request": {
+    "number": 25,
+    "title": "[Simulation] Local test PR",
+    "body": "This is a local simulation of the AI Code Review action.",
+    "state": "open",
+    "head": {
+      "ref": "feature/test",
+      "sha": "abc1234def5678"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "fedcba987654321"
+    },
+    "user": {
+      "login": "zxcloli666"
+    },
+    "additions": 50,
+    "deletions": 10,
+    "changed_files": 3
+  },
+  "repository": {
+    "name": "AI-Code-Review",
+    "full_name": "zxcloli666/AI-Code-Review",
+    "owner": {
+      "login": "zxcloli666"
+    }
+  },
+  "sender": {
+    "login": "zxcloli666"
+  }
+}

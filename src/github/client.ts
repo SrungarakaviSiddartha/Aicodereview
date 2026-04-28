@@ -2,10 +2,9 @@
  * GitHub API client for code review integration
  */
 
-import type { PullRequestInfo, FileChange, ReviewComment } from '../types/index.js';
-import { getOctokit } from '@actions/github';
-import { context } from '@actions/github';
 import { info, warning } from '@actions/core';
+import { context, getOctokit } from '@actions/github';
+import type { FileChange, PullRequestInfo, ReviewComment } from '../types/index.js';
 
 /**
  * Get pull request information
@@ -50,6 +49,7 @@ export async function getChangedFiles(
   let page = 1;
   const perPage = 100;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { data } = await octokit.rest.pulls.listFiles({
       owner,

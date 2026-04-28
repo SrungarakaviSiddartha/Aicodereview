@@ -2,8 +2,8 @@
  * AI Client with tool calling support
  */
 
-import type { PullRequestInfo, FileChange, ReviewConfig } from '../types/index.js';
 import { info, warning } from '@actions/core';
+import type { FileChange, PullRequestInfo, ReviewConfig } from '../types/index.js';
 import { generateSystemPrompt, generateUserPrompt, parseToolCalls } from './prompts.js';
 import { AI_TOOLS, executeTool, type ToolContext } from './tools-registry.js';
 
@@ -49,14 +49,14 @@ const MAX_ITERATIONS = 50; // Increased for thorough reviews
 /**
  * Maximum tokens for response
  */
-const MAX_TOKENS = 4000;
+const MAX_TOKENS = 2000;
 
 /**
  * Retry configuration for OpenAI API calls
  */
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY = 2000; // 2 seconds
-const MAX_RETRY_DELAY = 16000; // 16 seconds
+const MAX_RETRY_DELAY = 70000; // 70 seconds (covers per-minute rate limit reset)
 const REQUEST_TIMEOUT = 60000; // 60 seconds
 
 /**
@@ -197,11 +197,14 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Check if error is retryable (network/timeout errors, not API errors)
+ * Check if error is retryable (network/timeout errors or 429 rate limits)
  */
 function isRetryableError(error: any): boolean {
   const message = error.message?.toLowerCase() || '';
   return (
+    message.includes('429') ||
+    message.includes('rate limit') ||
+    message.includes('resource_exhausted') ||
     message.includes('timeout') ||
     message.includes('fetch failed') ||
     message.includes('network') ||
@@ -210,6 +213,21 @@ function isRetryableError(error: any): boolean {
     message.includes('etimedout') ||
     message.includes('invalid response format')
   );
+}
+
+/**
+ * Extract retry delay (in ms) from a 429 API error message
+ */
+function extractRetryDelay(error: any): number {
+  try {
+    const match = error.message?.match(/retryDelay["\s:]+([\d.]+)s/);
+    if (match) return Math.ceil(parseFloat(match[1])) * 1000 + 2000;
+    const secMatch = error.message?.match(/retry in ([\d.]+)s/);
+    if (secMatch) return Math.ceil(parseFloat(secMatch[1])) * 1000 + 2000;
+  } catch (e) {
+    // Ignore parsing errors
+  }
+  return MAX_RETRY_DELAY;
 }
 
 /**
@@ -318,14 +336,18 @@ async function callOpenAI(
 
       // Check if this is a retryable error
       if (isRetryableError(error) && attempt < MAX_RETRIES) {
-        // Calculate delay with exponential backoff
-        const delay = Math.min(
-          INITIAL_RETRY_DELAY * Math.pow(2, attempt),
-          MAX_RETRY_DELAY
-        );
+        // For 429, use the delay from the API response; otherwise exponential backoff
+        const is429 = error.message?.includes('429');
+        const delay = is429
+          ? extractRetryDelay(error)
+          : Math.min(INITIAL_RETRY_DELAY * Math.pow(2, attempt), MAX_RETRY_DELAY);
 
-        warning(`Network error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${error.message}`);
-        warning(`Retrying in ${delay / 1000} seconds...`);
+        if (is429) {
+          warning(`⏳ Rate limited (429) – waiting ${delay / 1000}s for quota reset...`);
+        } else {
+          warning(`Network error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${error.message}`);
+          warning(`Retrying in ${delay / 1000} seconds...`);
+        }
 
         await sleep(delay);
         continue; // Retry

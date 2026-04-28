@@ -3,13 +3,13 @@
  * Advanced code review with AI-powered analysis, AST parsing, and comprehensive feedback
  */
 
-import { getInput, setFailed, info, warning, startGroup, endGroup } from '@actions/core';
+import { endGroup, getInput, info, setFailed, startGroup, warning } from '@actions/core';
 import { context, getOctokit } from '@actions/github';
-import type { ReviewConfig, ReviewStatistics } from './types/index.js';
-import { getPullRequestInfo, getChangedFiles, postReviewComment, postSilentComment, getReviewEvent, addLabels, removeLabel } from './github/client.js';
-import { performAIReview, parseReviewSummary, generateSummary } from './ai/client.js';
+import { generateSummary, parseReviewSummary, performAIReview } from './ai/client.js';
 import { createChunks, getChunkingStats } from './chunking/strategy.js';
+import { addLabels, getChangedFiles, getPullRequestInfo, getReviewEvent, postReviewComment, postSilentComment, removeLabel } from './github/client.js';
 import { generateStatisticsReport, generateSummaryBadge } from './stats/visualizer.js';
+import type { ReviewConfig, ReviewStatistics } from './types/index.js';
 
 /**
  * Main action execution
@@ -151,7 +151,7 @@ async function run(): Promise<void> {
     }
 
     let reviewContent = '';
-    let totalTokensUsed = 0;
+    const totalTokensUsed = 0;
 
     if (chunks.length === 1) {
       // Single chunk - simple review

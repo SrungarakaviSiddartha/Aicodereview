@@ -1,0 +1,64 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  AI Code Review – Workflow for ANY GitHub Repository            ║
+# ║                                                                 ║
+# ║  SETUP STEPS:                                                   ║
+# ║  1. Copy this file to YOUR_REPO/.github/workflows/              ║
+# ║  2. In your repo: Settings → Secrets → Actions → New secret    ║
+# ║     Name:  GEMINI_API_KEY                                       ║
+# ║     Value: AIzaSyBMRB9KMzQ94NYZOPatJF6hNR8oXFyfiBY             ║
+# ║  3. Open any Pull Request → AI review posts automatically! 🎉   ║
+# ╚══════════════════════════════════════════════════════════════════╝
+
+name: 🤖 AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  ai-review:
+    name: 🤖 AI Code Review (Gemini 2.5 Pro)
+    runs-on: ubuntu-latest
+
+    # Run on PRs, or when someone comments /review on a PR
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/review'))
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit analysis
+
+      - name: Run AI Code Review
+        uses: zxcloli666/AI-Code-Review@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ── Gemini API (free tier available at aistudio.google.com) ───────
+          OPENAI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_MODEL: gemini-2.5-pro
+          OPENAI_API_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai/
+
+          # ── Review settings ───────────────────────────────────────────────
+          REVIEW_LANGUAGE: en         # en | ru | es | fr | de | zh | ja ...
+          SILENT_MODE: 'false'        # true = no email notifications
+          MAX_CHUNK_SIZE: '8000'      # Gemini supports large context windows
+
+          # ── Analysis features ─────────────────────────────────────────────
+          ENABLE_LINTERS: 'true'      # ESLint, Pylint, Clippy etc.
+          ENABLE_AST: 'true'          # Abstract Syntax Tree deep analysis
+          ENABLE_DEPENDENCY_ANALYSIS: 'true'  # Call graph & impact analysis
+
+          # ── Reporting ─────────────────────────────────────────────────────
+          SEVERITY_THRESHOLD: warning  # info | warning | error

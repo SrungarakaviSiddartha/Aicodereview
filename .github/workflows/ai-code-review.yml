@@ -1,0 +1,53 @@
+name: AI Code Review (Gemini)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  ai-review:
+    name: 🤖 AI Code Review
+    runs-on: ubuntu-latest
+
+    # Run on PRs, or when someone comments /review on a PR
+    if: |
+      (github.event_name == 'pull_request') ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/review'))
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit analysis
+
+      - name: Run AI Code Review (Gemini 2.5 Pro)
+        uses: zxcloli666/AI-Code-Review@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # ── Gemini API via OpenAI-compatible endpoint ──────────────────
+          OPENAI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_MODEL: gemini-2.5-pro
+          OPENAI_API_BASE_URL: https://generativelanguage.googleapis.com/v1beta/openai/
+
+          # ── Review settings ────────────────────────────────────────────
+          REVIEW_LANGUAGE: en
+          SILENT_MODE: 'false'          # Set to 'true' to reduce PR notifications
+          MAX_CHUNK_SIZE: '6000'
+
+          # ── Analysis features ──────────────────────────────────────────
+          ENABLE_LINTERS: 'true'
+          ENABLE_AST: 'true'
+          ENABLE_DEPENDENCY_ANALYSIS: 'true'
+
+          # ── Reporting ──────────────────────────────────────────────────
+          SEVERITY_THRESHOLD: warning   # report warnings and above (info | warning | error)
