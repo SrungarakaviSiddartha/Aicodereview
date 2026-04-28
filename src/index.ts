@@ -9,6 +9,7 @@ import { generateSummary, parseReviewSummary, performAIReview } from './ai/clien
 import { createChunks, getChunkingStats } from './chunking/strategy.js';
 import { addLabels, getChangedFiles, getPullRequestInfo, getReviewEvent, postReviewComment, postSilentComment, removeLabel } from './github/client.js';
 import { generateStatisticsReport, generateSummaryBadge } from './stats/visualizer.js';
+import { parseSeverityThreshold } from './utils/config.js';
 import type { ReviewConfig, ReviewStatistics } from './types/index.js';
 
 /**
@@ -35,7 +36,7 @@ async function run(): Promise<void> {
       enableLinters: getInput('ENABLE_LINTERS') !== 'false',
       enableAST: getInput('ENABLE_AST') !== 'false',
       enableDependencyAnalysis: getInput('ENABLE_DEPENDENCY_ANALYSIS') !== 'false',
-      severityThreshold: (getInput('SEVERITY_THRESHOLD') || 'warning') as any,
+      severityThreshold: parseSeverityThreshold(getInput('SEVERITY_THRESHOLD')),
     };
 
     info(`Model: ${config.openaiApiModel}`);
